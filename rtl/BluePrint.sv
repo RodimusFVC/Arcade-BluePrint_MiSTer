@@ -1,13 +1,13 @@
 //============================================================================
-// 
-//  Time Pilot top-level module
+//
+//  Blue Print top-level module
 //  Copyright (C) 2021 Ace
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
 //  to deal in the Software without restriction, including without limitation
 //  the rights to use, copy, modify, merge, publish, distribute, sublicense,
-//  and/or sell copies of the Software, and to permit persons to whom the 
+//  and/or sell copies of the Software, and to permit persons to whom the
 //  Software is furnished to do so, subject to the following conditions:
 //
 //  The above copyright notice and this permission notice shall be included in
@@ -40,16 +40,16 @@ module TimePilot
 	output               ce_pix,
 	output         [4:0] video_r, video_g, video_b,
 	output signed [15:0] sound,
-	
+
 	//Screen centering (alters HSync, VSync and VBlank timing in the Konami 082 to reposition the video output)
 	input          [3:0] h_center, v_center,
-	
+
 	input         [24:0] ioctl_addr,
 	input          [7:0] ioctl_data,
 	input                ioctl_wr,
-	
+
 	input                pause,
-	
+
 	//This input serves to select different fractional dividers to acheive 1.789772MHz for the sound Z80 and AY-3-8910s
 	//depending on whether Time Pilot runs with original or underclocked timings to normalize sync frequencies
 	input                underclock,
@@ -65,26 +65,27 @@ wire A5, A6, irq_trigger, cs_sounddata, cs_controls_dip1, cs_dip2;
 wire [7:0] controls_dip, cpubrd_D;
 
 //ROM loader signals for MISTer (loads ROMs from SD card)
-wire ep1_cs_i, ep2_cs_i, ep3_cs_i, ep4_cs_i, ep5_cs_i, ep6_cs_i, ep7_cs_i;
-wire cp1_cs_i, cp2_cs_i, tl_cs_i, sl_cs_i;
+wire main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i;
+wire tile0_cs_i, tile1_cs_i;
+wire spr_r_cs_i, spr_b_cs_i, spr_g_cs_i;
 
-//MiSTer data write selector
+//MiSTer data write selector (active for ROM index 0 only)
 selector DLSEL
 (
 	.ioctl_addr(ioctl_addr),
-	.ep1_cs(ep1_cs_i),
-	.ep2_cs(ep2_cs_i),
-	.ep3_cs(ep3_cs_i),
-	.ep4_cs(ep4_cs_i),
-	.ep5_cs(ep5_cs_i),
-	.ep6_cs(ep6_cs_i),
-	.ep7_cs(ep7_cs_i),
-	.cp1_cs(cp1_cs_i),
-	.cp2_cs(cp2_cs_i),
-	.tl_cs(tl_cs_i),
-	.sl_cs(sl_cs_i)
+	.main1_cs(main1_cs_i),
+	.main2_cs(main2_cs_i),
+	.main3_cs(main3_cs_i),
+	.main4_cs(main4_cs_i),
+	.main5_cs(main5_cs_i),
+	.tile0_cs(tile0_cs_i),
+	.tile1_cs(tile1_cs_i),
+	.spr_r_cs(spr_r_cs_i),
+	.spr_b_cs(spr_b_cs_i),
+	.spr_g_cs(spr_g_cs_i)
 );
 
+//TODO: Reconnect when CPU board is rewritten (Task 3)
 //Instantiate main PCB
 TimePilot_CPU main_pcb
 (
@@ -99,10 +100,10 @@ TimePilot_CPU main_pcb
 	.video_hblank(video_hblank),
 	.video_vblank(video_vblank),
 	.ce_pix(ce_pix),
-	
+
 	.h_center(h_center),
 	.v_center(v_center),
-	
+
 	.controls_dip(controls_dip),
 	.cpubrd_Dout(cpubrd_D),
 	.cpubrd_A5(A5),
@@ -111,21 +112,25 @@ TimePilot_CPU main_pcb
 	.irq_trigger(irq_trigger),
 	.cs_dip2(cs_dip2),
 	.cs_controls_dip1(cs_controls_dip1),
-	
-	.ep1_cs_i(ep1_cs_i),
-	.ep2_cs_i(ep2_cs_i),
-	.ep3_cs_i(ep3_cs_i),
-	.ep4_cs_i(ep4_cs_i),
-	.ep5_cs_i(ep5_cs_i),
-	.ep6_cs_i(ep6_cs_i),
-	.cp1_cs_i(cp1_cs_i),
-	.cp2_cs_i(cp2_cs_i),
-	.tl_cs_i(tl_cs_i),
-	.sl_cs_i(sl_cs_i),
+
+	// TODO: These port mappings are placeholders - will be replaced when
+	// CPU board module is rewritten for Blue Print in Task 3.
+	// Old Time Pilot used ep1-ep6 (8KB each) + color/lookup PROMs.
+	// Blue Print uses main1-main5 + tile0-tile1 + spr_r/b/g (all 4KB).
+	.ep1_cs_i(main1_cs_i),
+	.ep2_cs_i(main2_cs_i),
+	.ep3_cs_i(main3_cs_i),
+	.ep4_cs_i(main4_cs_i),
+	.ep5_cs_i(main5_cs_i),
+	.ep6_cs_i(tile0_cs_i),
+	.cp1_cs_i(tile1_cs_i),
+	.cp2_cs_i(spr_r_cs_i),
+	.tl_cs_i(spr_b_cs_i),
+	.sl_cs_i(spr_g_cs_i),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_data(ioctl_data),
-	
+
 	.pause(pause),
 
 	.hs_address(hs_address),
@@ -134,6 +139,7 @@ TimePilot_CPU main_pcb
 	.hs_write(hs_write)
 );
 
+//TODO: Reconnect when sound board is rewritten (Task 2)
 //Instantiate sound PCB
 TimePilot_SND sound_pcb
 (
@@ -149,18 +155,20 @@ TimePilot_SND sound_pcb
 	.p1_fire(p1_fire),
 	.p2_fire(p2_fire),
 	.btn_service(btn_service),
-	
+
 	.cs_controls_dip1(cs_controls_dip1),
 	.cs_dip2(cs_dip2),
 	.cpubrd_A5(A5),
 	.cpubrd_A6(A6),
-	.cpubrd_Din(cpubrd_D),	
+	.cpubrd_Din(cpubrd_D),
 	.controls_dip(controls_dip),
 	.sound(sound),
-	
+
 	.underclock(underclock),
-	
-	.ep7_cs_i(ep7_cs_i),
+
+	// TODO: Sound ROM CS will come from a separate sound ROM selector
+	// for index 1 when sound board is rewritten in Task 2.
+	.ep7_cs_i(1'b0),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_data(ioctl_data)
