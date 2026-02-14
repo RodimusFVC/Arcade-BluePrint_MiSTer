@@ -438,9 +438,9 @@ wire [7:0] b = (b_out[0] ? 8'h19 : 8'h00) +
                (b_out[4] ? 8'h4D : 8'h00);
 wire ce_pix;
 
-wire rotate_ccw = 0;
+wire rotate_ccw = 1;
 wire no_rotate = status[12] | direct_video;
-wire flip = video_rotated;
+wire flip = ~no_rotate;
 wire video_rotated;
 screen_rotate screen_rotate(.*);
 

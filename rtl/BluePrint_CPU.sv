@@ -156,16 +156,17 @@ T80s cpu
 // VBlank IRQ (irq0_line_hold style): assert on VBlank rising edge, clear on IORQ+M1
 reg n_irq = 1'b1;
 reg vblk_last = 1'b0;
+wire irq_ack = ~n_iorq & ~n_m1;
 always_ff @(posedge clk_49m) begin
 	if (!reset) begin
 		n_irq <= 1'b1;
 		vblk_last <= 1'b0;
 	end else begin
-		vblk_last <= vblk;
-		if (~reset | ~(n_iorq | n_m1))
+		if (irq_ack)
 			n_irq <= 1'b1;
-		else if (vblk & ~vblk_last)
+		else if (cen_5m && vblk && !vblk_last)
 			n_irq <= 1'b0;
+		vblk_last <= vblk;
 	end
 end
 
