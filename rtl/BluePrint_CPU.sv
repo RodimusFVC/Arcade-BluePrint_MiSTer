@@ -200,10 +200,11 @@ wire [7:0] rom_D = (z80_A[14:12] == 3'd0) ? rom1_D :
                    (z80_A[14:12] == 3'd4) ? rom5_D :
                    8'hFF;
 
-// Tile ROMs (2x 4KB) — address inputs are placeholders, will be connected in Task 3B
+// Tile ROMs (2x 4KB) — addressed by rendering pipeline
 wire [7:0] tile0_D, tile1_D;
-eprom_4k tile_rom0(.CLK(clk_49m), .ADDR(12'd0), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile0_cs_i), .WR(ioctl_wr), .DATA(tile0_D));
-eprom_4k tile_rom1(.CLK(clk_49m), .ADDR(12'd0), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile1_cs_i), .WR(ioctl_wr), .DATA(tile1_D));
+reg  [11:0] tile_render_addr;
+eprom_4k tile_rom0(.CLK(clk_49m), .ADDR(tile_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile0_cs_i), .WR(ioctl_wr), .DATA(tile0_D));
+eprom_4k tile_rom1(.CLK(clk_49m), .ADDR(tile_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile1_cs_i), .WR(ioctl_wr), .DATA(tile1_D));
 
 // Sprite ROMs (3x 4KB) — address inputs are placeholders, will be connected in Task 3C
 wire [7:0] spr_r_D, spr_b_D, spr_g_D;
@@ -229,37 +230,37 @@ dpram_dc #(.widthad_a(11)) work_ram
 	.q_b(hs_data_out)
 );
 
-// Video RAM (1KB)
-wire [7:0] vram_D;
-spram #(8, 10) video_ram
+// Video RAM (1KB) — port A: CPU, port B: video rendering
+wire [7:0] vram_cpu_D, vram_render_D;
+reg  [9:0] vram_render_addr;
+dpram_dc #(.widthad_a(10)) video_ram
 (
-	.clk(clk_49m),
-	.we(cs_vram & ~n_wr),
-	.addr(z80_A[9:0]),
-	.data(z80_Dout),
-	.q(vram_D)
+	.clock_a(clk_49m), .wren_a(cs_vram & ~n_wr),
+	.address_a(z80_A[9:0]), .data_a(z80_Dout), .q_a(vram_cpu_D),
+	.clock_b(clk_49m), .wren_b(1'b0),
+	.address_b(vram_render_addr), .data_b(8'd0), .q_b(vram_render_D)
 );
 
-// Color RAM (1KB)
-wire [7:0] cram_D;
-spram #(8, 10) color_ram
+// Color RAM (1KB) — port A: CPU, port B: video rendering
+wire [7:0] cram_cpu_D, cram_render_D;
+reg  [9:0] cram_render_addr;
+dpram_dc #(.widthad_a(10)) color_ram
 (
-	.clk(clk_49m),
-	.we(cs_cram & ~n_wr),
-	.addr(z80_A[9:0]),
-	.data(z80_Dout),
-	.q(cram_D)
+	.clock_a(clk_49m), .wren_a(cs_cram & ~n_wr),
+	.address_a(z80_A[9:0]), .data_a(z80_Dout), .q_a(cram_cpu_D),
+	.clock_b(clk_49m), .wren_b(1'b0),
+	.address_b(cram_render_addr), .data_b(8'd0), .q_b(cram_render_D)
 );
 
-// Scroll RAM (256 bytes)
-wire [7:0] scroll_D;
-spram #(8, 8) scroll_ram
+// Scroll RAM (256 bytes) — port A: CPU, port B: video rendering
+wire [7:0] scroll_cpu_D, scroll_render_D;
+reg  [7:0] scroll_render_addr;
+dpram_dc #(.widthad_a(8)) scroll_ram
 (
-	.clk(clk_49m),
-	.we(cs_scroll & ~n_wr),
-	.addr(z80_A[7:0]),
-	.data(z80_Dout),
-	.q(scroll_D)
+	.clock_a(clk_49m), .wren_a(cs_scroll & ~n_wr),
+	.address_a(z80_A[7:0]), .data_a(z80_Dout), .q_a(scroll_cpu_D),
+	.clock_b(clk_49m), .wren_b(1'b0),
+	.address_b(scroll_render_addr), .data_b(8'd0), .q_b(scroll_render_D)
 );
 
 // Sprite RAM (256 bytes)
@@ -305,20 +306,158 @@ assign sound_cmd_wr = snd_cmd_wr_reg;
 
 wire [7:0] z80_Din = cs_rom                                ? rom_D :
                      (cs_wram & n_wr)                       ? wram_D :
-                     (cs_vram & n_wr)                       ? vram_D :
-                     (cs_cram & n_wr)                       ? cram_D :
-                     (cs_scroll & n_wr)                     ? scroll_D :
+                     (cs_vram & n_wr)                       ? vram_cpu_D :
+                     (cs_cram & n_wr)                       ? cram_cpu_D :
+                     (cs_scroll & n_wr)                     ? scroll_cpu_D :
                      (cs_sprite & n_wr)                     ? sprite_D :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b00) ? p1_controls :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b01) ? p2_controls :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b11) ? dipsw_readback :
                      8'hFF;
 
-//----------------------------------------------------- Video output (stub) ----------------------------------------------------//
+//--------------------------------------------------- Tilemap rendering pipeline ------------------------------------------------//
 
-// Temporary — outputs black. Tilemap rendering (Task 3B) and sprite rendering (Task 3C) will replace this.
-assign red   = 5'd0;
-assign green = 5'd0;
-assign blue  = 5'd0;
+// Tile fetch state machine — runs at clk_49m speed between cen_5m ticks
+// With ~10 master clocks per pixel, we have plenty of time for the multi-cycle fetch
+reg [2:0] fetch_state;
+reg [7:0] tile_shift0, tile_shift1;    // Shift registers for 2 bitplanes
+reg [6:0] tile_color_latch;            // Latched color for current tile
+reg       tile_priority_latch;         // Latched priority for current tile
+reg       prev_bank_bit;               // Bank bit carried from previous tile's cram[6]
+
+// Pre-computed values for the NEXT tile to fetch
+reg [4:0] fetch_col;                   // Column we're fetching for
+reg [7:0] fetch_scrolled_y;            // Scrolled Y for the fetch column
+reg [9:0] fetch_tile_index;            // VRAM/CRAM index for the tile
+reg [8:0] fetch_tile_code;             // Full tile code with bank bit
+reg [6:0] fetch_color;                 // Color from CRAM
+reg       fetch_priority;              // Priority from CRAM
+reg [7:0] fetch_tile0, fetch_tile1;    // Fetched tile ROM data ready to latch
+
+// Next pixel position (one pixel ahead for pre-fetch addressing)
+wire [8:0] h_next = (h_cnt == 9'd319) ? 9'd0 : h_cnt + 9'd1;
+wire [2:0] fine_x = h_cnt[2:0];
+
+// Current screen Y (offset by vblank start)
+wire [7:0] screen_y = v_cnt[7:0] - 8'd16;
+
+always_ff @(posedge clk_49m) begin
+	if (!reset) begin
+		fetch_state <= 3'd0;
+		tile_shift0 <= 8'd0;
+		tile_shift1 <= 8'd0;
+		tile_color_latch <= 7'd0;
+		tile_priority_latch <= 1'b0;
+		prev_bank_bit <= 1'b0;
+	end else if (cen_5m) begin
+		// On each pixel tick: shift out current pixel, and latch new tile at tile boundary
+		if (fine_x == 3'd0) begin
+			// Latch new tile data from fetch pipeline
+			tile_shift0 <= fetch_tile0;
+			tile_shift1 <= fetch_tile1;
+			tile_color_latch <= fetch_color;
+			tile_priority_latch <= fetch_priority;
+		end else begin
+			// Shift registers left
+			tile_shift0 <= {tile_shift0[6:0], 1'b0};
+			tile_shift1 <= {tile_shift1[6:0], 1'b0};
+		end
+
+		// Reset prev_bank_bit at start of each scanline
+		if (h_cnt == 9'd0)
+			prev_bank_bit <= 1'b0;
+
+		// Kick off fetch for next tile when we're at pixel 0 of current tile
+		// (fetching the tile that starts 8 pixels from now)
+		if (fine_x == 3'd0)
+			fetch_state <= 3'd1;
+	end else if (fetch_state != 3'd0) begin
+		// Multi-cycle fetch machine running at clk_49m between pixel ticks
+		case (fetch_state)
+			3'd1: begin
+				// Step 1: Compute fetch column and set scroll RAM address
+				fetch_col <= h_next[7:3]; // column of the NEXT tile (8 pixels ahead)
+				if (flip)
+					scroll_render_addr <= (8'd32 - {3'd0, h_next[7:3]}) & 8'hFF;
+				else
+					scroll_render_addr <= (8'd30 - {3'd0, h_next[7:3]}) & 8'hFF;
+				fetch_state <= 3'd2;
+			end
+			3'd2: begin
+				// Step 2: Scroll RAM data available — compute scrolled Y and tile index
+				fetch_scrolled_y <= screen_y + scroll_render_D;
+				fetch_state <= 3'd3;
+			end
+			3'd3: begin
+				// Step 3: Compute VRAM/CRAM tile index and set addresses
+				// TILEMAP_SCAN_COLS_FLIP_X: tile_index = (31 - col) * 32 + tile_row
+				fetch_tile_index <= ({5'd0, (5'd31 - fetch_col)} * 10'd32) + {5'd0, fetch_scrolled_y[7:3]};
+				fetch_state <= 3'd4;
+			end
+			3'd4: begin
+				// Step 4: Set VRAM and CRAM read addresses
+				vram_render_addr <= fetch_tile_index;
+				cram_render_addr <= fetch_tile_index;
+				fetch_state <= 3'd5;
+			end
+			3'd5: begin
+				// Step 5: VRAM/CRAM data available — compute tile code and ROM address
+				fetch_color <= cram_render_D[6:0];
+				fetch_priority <= cram_render_D[7];
+				fetch_tile_code <= {prev_bank_bit & gfx_bank, vram_render_D};
+				prev_bank_bit <= cram_render_D[6];
+				// Compute fine_y with flip support
+				if (flip)
+					tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, 3'd7 - fetch_scrolled_y[2:0]};
+				else
+					tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, fetch_scrolled_y[2:0]};
+				fetch_state <= 3'd6;
+			end
+			3'd6: begin
+				// Step 6: Tile ROM data available — latch it
+				if (flip) begin
+					// Flip X: reverse bit order
+					fetch_tile0 <= {tile0_D[0], tile0_D[1], tile0_D[2], tile0_D[3],
+					                tile0_D[4], tile0_D[5], tile0_D[6], tile0_D[7]};
+					fetch_tile1 <= {tile1_D[0], tile1_D[1], tile1_D[2], tile1_D[3],
+					                tile1_D[4], tile1_D[5], tile1_D[6], tile1_D[7]};
+				end else begin
+					fetch_tile0 <= tile0_D;
+					fetch_tile1 <= tile1_D;
+				end
+				fetch_state <= 3'd0; // Done
+			end
+			default: fetch_state <= 3'd0;
+		endcase
+	end
+end
+
+//------------------------------------------------------ Palette computation ----------------------------------------------------//
+
+wire [1:0] tile_pixel = {tile_shift1[7], tile_shift0[7]}; // MSB first
+wire tile_intensity = tile_color_latch[6];
+wire [2:0] color_hi = tile_color_latch[5:3]; // RBG for pixel==10
+wire [2:0] color_lo = tile_color_latch[2:0]; // RBG for pixel==01
+
+wire [2:0] pen_rbg = (tile_pixel == 2'b00) ? 3'b000 :
+                     (tile_pixel == 2'b01) ? color_lo :
+                     (tile_pixel == 2'b10) ? color_hi :
+                     (color_lo | color_hi);  // 11
+
+wire pen_r = pen_rbg[0];
+wire pen_b = pen_rbg[1];
+wire pen_g = pen_rbg[2];
+
+wire [4:0] r_tile = pen_r ? (tile_intensity ? 5'd24 : 5'd31) : 5'd0;
+wire [4:0] g_tile = pen_g ? (tile_intensity ? 5'd24 : 5'd31) : 5'd0;
+wire [4:0] b_tile = pen_b ? (tile_intensity ? 5'd24 : 5'd31) : 5'd0;
+
+wire tile_transparent = (tile_pixel == 2'b00);
+
+//------------------------------------------------------- Video output ----------------------------------------------------------//
+
+assign red   = (hblk | vblk) ? 5'd0 : r_tile;
+assign green = (hblk | vblk) ? 5'd0 : g_tile;
+assign blue  = (hblk | vblk) ? 5'd0 : b_tile;
 
 endmodule
