@@ -69,25 +69,29 @@ module BluePrint_CPU
 
 // Generate ~5 MHz pixel clock enable from 49.152 MHz
 // 49.152 * 89/875 ≈ 4.997 MHz
-wire cen_5m;
-jtframe_frac_cen #(1) pix_cen
+wire [1:0] pix_cen_o;
+jtframe_frac_cen #(2) pix_cen
 (
 	.clk(clk_49m),
 	.n(10'd89),
 	.m(10'd875),
-	.cen(cen_5m)
+	.cen(pix_cen_o),
+	.cenb()
 );
+wire cen_5m = pix_cen_o[0];
 
 // Generate ~3.5 MHz CPU clock enable from 49.152 MHz
 // 49.152 * 5/70 ≈ 3.511 MHz
-wire cen_3m5;
-jtframe_frac_cen #(1) cpu_cen
+wire [1:0] cpu_cen_o;
+jtframe_frac_cen #(2) cpu_cen
 (
 	.clk(clk_49m),
 	.n(10'd5),
 	.m(10'd70),
-	.cen(cen_3m5)
+	.cen(cpu_cen_o),
+	.cenb()
 );
+wire cen_3m5 = cpu_cen_o[0];
 
 assign ce_pix = cen_5m;
 
