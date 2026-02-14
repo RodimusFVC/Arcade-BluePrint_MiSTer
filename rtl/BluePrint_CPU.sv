@@ -391,17 +391,17 @@ always_ff @(posedge clk_49m) begin
 					begin
 						reg [7:0] scrolled_y_full;
 						scrolled_y_full = screen_y + scroll_render_D;
-						vram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
-						cram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
+						vram_render_addr <= {(screen_col + 5'd1), scrolled_y_full[7:3]};
+						cram_render_addr <= {(screen_col + 5'd1), scrolled_y_full[7:3]};
 					end
-					tile_shift0 <= {tile_shift0[6:0], 1'b0};
-					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 
 				3'd2: begin
 					// Wait for VRAM/CRAM read
-					tile_shift0 <= {tile_shift0[6:0], 1'b0};
-					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 
 				3'd3: begin
@@ -413,8 +413,8 @@ always_ff @(posedge clk_49m) begin
 					else
 						tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, pipe_fine_y};
 					prev_bank_bit <= cram_render_D[6];
-					tile_shift0 <= {tile_shift0[6:0], 1'b0};
-					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 
 				3'd4: begin
@@ -428,14 +428,14 @@ always_ff @(posedge clk_49m) begin
 						pipe_tile0 <= tile0_D;
 						pipe_tile1 <= tile1_D;
 					end
-					tile_shift0 <= {tile_shift0[6:0], 1'b0};
-					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 
 				default: begin
 					// fine_x = 5, 6, 7: just shift
-					tile_shift0 <= {tile_shift0[6:0], 1'b0};
-					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 			endcase
 		end
@@ -444,7 +444,7 @@ end
 
 //------------------------------------------------------ Palette computation ----------------------------------------------------//
 
-wire [1:0] tile_pixel = {tile_shift1[7], tile_shift0[7]}; // MSB first
+wire [1:0] tile_pixel = {tile_shift1[0], tile_shift0[0]}; // LSB first
 wire tile_intensity = tile_color_latch[6];
 wire [2:0] color_hi = tile_color_latch[5:3]; // RBG for pixel==10
 wire [2:0] color_lo = tile_color_latch[2:0]; // RBG for pixel==01
