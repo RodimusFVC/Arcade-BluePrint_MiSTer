@@ -1,7 +1,7 @@
 //============================================================================
 // 
 //  Port to MiSTer.
-//  Copyright (C) 2021 Sorgelig
+//  Copyright (C) 2026 Rodimus
 //
 //  Blue Print for MiSTer
 //  Based on Time Pilot port, original design Copyright (C) 2017 Dar
