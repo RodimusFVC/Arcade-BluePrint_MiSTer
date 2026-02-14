@@ -6,7 +6,7 @@
 //  Time Pilot for MiSTer
 //  Original design Copyright (C) 2017 Dar
 //  Initial port to MiSTer Copyright (C) 2017 Sorgelig
-//  Updated port to MiSTer Copyright (C) 2021 Ace,
+//  Updated port to MiSTer Copyright (C) 2021, 2022 Ace,
 //  Ash Evans (aka ElectronAsh/OzOnE), Artemio Urbina and Kitrinx (aka Rysha)
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
@@ -39,7 +39,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [45:0] HPS_BUS,
+	inout  [48:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -52,7 +52,7 @@ module emu
 	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
 	output [12:0] VIDEO_ARX,
 	output [12:0] VIDEO_ARY,
-
+	
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
 	output  [7:0] VGA_B,
@@ -62,13 +62,16 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
+	output        HDMI_BLACKOUT,
+	output        HDMI_BOB_DEINT,
 
 `ifdef MISTER_FB
-	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
+	// Use framebuffer in DDRAM
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 	//    [3]   : 0=16bits 565 1=16bits 1555
@@ -183,6 +186,7 @@ module emu
 	input         OSD_STATUS
 );
 
+
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -191,8 +195,11 @@ assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQM
 
 assign VGA_F1 = 0;
 assign VGA_SCALER = 0;
+assign VGA_DISABLE = 0;
 assign FB_FORCE_BLANK = 0;
 assign HDMI_FREEZE = 0;
+assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT = 0;
 
 wire signed [15:0] audio;
 assign AUDIO_L = audio;
@@ -237,10 +244,10 @@ localparam CONF_STR = {
 	"V,v",`BUILD_DATE
 };
 
-wire        forced_scandoubler;
-wire  [1:0] buttons;
-wire [31:0] status;
-wire [10:0] ps2_key;
+wire         forced_scandoubler;
+wire   [1:0] buttons;
+wire [127:0] status;
+wire  [10:0] ps2_key;
 
 wire        ioctl_download;
 wire        ioctl_upload;
@@ -347,7 +354,7 @@ always @(posedge CLK_50M) begin
 			end
 			5: begin
 				cfg_address <= 7;
-				cfg_data <= underclock_r ? 3268298314 : 3639383488;
+				cfg_data <= underclock_r ? 3262113561 : 3639383488;
 				cfg_write <= 1;
 			end
 			7: begin
@@ -467,10 +474,11 @@ wire ce_pix;
 
 wire rotate_ccw = 0;
 wire no_rotate = status[12] | direct_video;
-wire flip = ~no_rotate;
+wire flip = video_rotated;
+wire video_rotated;
 screen_rotate screen_rotate(.*);
 
-arcade_video #(256,24) arcade_video
+arcade_video #(256, 24) arcade_video
 (
 	.*,
 
