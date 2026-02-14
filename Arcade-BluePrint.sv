@@ -3,8 +3,8 @@
 //  Port to MiSTer.
 //  Copyright (C) 2021 Sorgelig
 //
-//  Time Pilot for MiSTer
-//  Original design Copyright (C) 2017 Dar
+//  Blue Print for MiSTer
+//  Based on Time Pilot port, original design Copyright (C) 2017 Dar
 //  Initial port to MiSTer Copyright (C) 2017 Sorgelig
 //  Updated port to MiSTer Copyright (C) 2021, 2022 Ace,
 //  Ash Evans (aka ElectronAsh/OzOnE), Artemio Urbina and Kitrinx (aka Rysha)
@@ -221,11 +221,10 @@ assign VIDEO_ARY = status[12] ? ((!ar) ? 12'd14 : 12'd0) : ((!ar) ? 12'd16 : 12'
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"A.TIMEPLT;;",
+	"A.BLUEPRT;;",
 	"ODE,Aspect Ratio,Original,Full screen,[ARC1],[ARC2];",
 	"OC,Orientation,Vert,Horz;",
 	"OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"OL,Game Speed,Native,60Hz Adjust;",
 	"-;",
 	"H1OR,Autosave Hiscores,Off,On;",
 	"P1,Pause Options;",
@@ -310,11 +309,11 @@ pll pll
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
 wire        cfg_waitrequest;
-reg         cfg_write;
-reg   [5:0] cfg_address;
-reg  [31:0] cfg_data;
+wire        cfg_write;
+wire  [5:0] cfg_address;
+wire [31:0] cfg_data;
 
-//Reconfigure PLL to apply an ~1% underclock to Time Pilot to bring video timings in spec for 60Hz VSync (sourced from Genesis core)
+// PLL reconfig kept for potential future use
 pll_cfg pll_cfg
 (
 	.mgmt_clk(CLK_50M),
@@ -329,42 +328,10 @@ pll_cfg pll_cfg
 	.reconfig_from_pll(reconfig_from_pll)
 );
 
-always @(posedge CLK_50M) begin
-	reg underclock = 0, underclock2 = 0;
-	reg [2:0] state = 0;
-	reg underclock_r;
-
-	underclock <= status[21];
-	underclock2 <= underclock;
-
-	cfg_write <= 0;
-	if(underclock2 == underclock && underclock2 != underclock_r) begin
-		state <= 1;
-		underclock_r <= underclock2;
-	end
-
-	if(!cfg_waitrequest) begin
-		if(state)
-			state <= state + 3'd1;
-		case(state)
-			1: begin
-				cfg_address <= 0;
-				cfg_data <= 0;
-				cfg_write <= 1;
-			end
-			5: begin
-				cfg_address <= 7;
-				cfg_data <= underclock_r ? 3262113561 : 3639383488;
-				cfg_write <= 1;
-			end
-			7: begin
-				cfg_address <= 2;
-				cfg_data <= 0;
-				cfg_write <= 1;
-			end
-		endcase
-	end
-end
+// No PLL reconfiguration needed for Blue Print
+assign cfg_write = 0;
+assign cfg_address = 0;
+assign cfg_data = 0;
 
 wire reset = RESET | status[0] | buttons[1];
 
@@ -453,8 +420,7 @@ wire hblank, vblank;
 wire hs, vs;
 wire [4:0] r_out, g_out, b_out;
 
-//Adjust color tones for the final output so they better match an original
-//Time Pilot PCB (credit: Paulb-nl)
+// Scale 5-bit color to 8-bit for VGA output
 wire [7:0] r = (r_out[0] ? 8'h19 : 8'h00) + 
                (r_out[1] ? 8'h24 : 8'h00) + 
                (r_out[2] ? 8'h35 : 8'h00) +
@@ -493,50 +459,45 @@ arcade_video #(256, 24) arcade_video
 	.fx(status[17:15])
 );
 
-//Instantiate Time Pilot top-level module
-TimePilot TP_inst
+// Assemble player control bytes for Blue Print (active HIGH)
+// IN0: {coin1, start2, start1, btn1, left, down, right, up}
+// IN1: {3'b111, btn1, left, down, right, up}
+wire [7:0] p1_controls = {m_coin1, m_start2, m_start1, m_fire1, m_left1, m_down1, m_right1, m_up1};
+wire [7:0] p2_controls = {3'b111, m_fire2, m_left2, m_down2, m_right2, m_up2};
+
+// Instantiate Blue Print top-level module
+BluePrint BP_inst
 (
-	.reset(~reset),                                        // input reset
+	.reset(~reset),
 
-	.clk_49m(CLK_49M),                                     // input clk_49m
-	
-	.coin({~m_coin2, ~m_coin1}),                           // input [1:0] coin
-	
-	.start_buttons({~m_start2, ~m_start1}),                // input [1:0] start_buttons
-	
-	.p1_joystick({~m_right1, ~m_left1, ~m_down1, ~m_up1}),
-	.p2_joystick({~m_right2, ~m_left2, ~m_down2, ~m_up2}),
-	.p1_fire(~m_fire1),
-	.p2_fire(~m_fire2),
-	
-	.btn_service(~btn_service),
+	.clk_49m(CLK_49M),
 
-	.dip_sw({~dip_sw[1], ~dip_sw[0]}),                     // input [15:0] dip_sw
-	
-	.h_center(status[6:3]),                                // Screen centering
+	.p1_controls(p1_controls),
+	.p2_controls(p2_controls),
+
+	.dip_sw({~dip_sw[1], ~dip_sw[0]}),
+
+	.h_center(status[6:3]),
 	.v_center(status[10:7]),
-	
-	.video_hsync(hs),                                      // output video_hsync
-	.video_vsync(vs),                                      // output video_vsync
-	.video_vblank(vblank),                                 // output video_vblank
-	.video_hblank(hblank),                                 // output video_hblank
-	.ce_pix(ce_pix),                                       // output ce_pix
-	
-	.video_r(r_out),                                       // output [4:0] video_r
-	.video_g(g_out),                                       // output [4:0] video_g
-	.video_b(b_out),                                       // output [4:0] video_b
-	
-	.sound(audio),                                         // output [15:0] sound
-	
+
+	.video_hsync(hs),
+	.video_vsync(vs),
+	.video_vblank(vblank),
+	.video_hblank(hblank),
+	.ce_pix(ce_pix),
+
+	.video_r(r_out),
+	.video_g(g_out),
+	.video_b(b_out),
+
+	.sound(audio),
+
 	.ioctl_addr(ioctl_addr),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_data(ioctl_dout),
 	.ioctl_index(ioctl_index),
 
 	.pause(pause_cpu),
-
-	//Flag to signal that Time Pilot has been underclocked to normalize video timings in order to maintain consistent sound timings and pitch
-	.underclock(status[21]),
 
 	.hs_address(hs_address),
 	.hs_data_out(hs_data_out),

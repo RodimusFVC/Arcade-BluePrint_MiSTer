@@ -23,27 +23,31 @@
 //
 //============================================================================
 
-//Module declaration, I/O ports
-module TimePilot
+module BluePrint
 (
 	input                reset,
-	input                clk_49m,                  //Actual frequency: 49.152MHz
-	input          [1:0] coin,                     //0 = coin 1, 1 = coin 2
-	input          [1:0] start_buttons,            //0 = Player 1, 1 = Player 2
-	input          [3:0] p1_joystick, p2_joystick, //0 = up, 1 = down, 2 = left, 3 = right
-	input                p1_fire,
-	input                p2_fire,
-	input                btn_service,
+	input                clk_49m,
+
+	// Player controls (active HIGH, assembled from MiSTer inputs)
+	input          [7:0] p1_controls,
+	input          [7:0] p2_controls,
+
+	// DIP switches (directly from MiSTer OSD)
 	input         [15:0] dip_sw,
+
+	// Video outputs
 	output               video_hsync, video_vsync, video_csync,
 	output               video_hblank, video_vblank,
 	output               ce_pix,
 	output         [4:0] video_r, video_g, video_b,
+
+	// Audio output
 	output signed [15:0] sound,
 
-	//Screen centering (alters HSync, VSync and VBlank timing in the Konami 082 to reposition the video output)
+	// Screen centering
 	input          [3:0] h_center, v_center,
 
+	// ROM loading
 	input         [24:0] ioctl_addr,
 	input          [7:0] ioctl_data,
 	input                ioctl_wr,
@@ -51,45 +55,32 @@ module TimePilot
 
 	input                pause,
 
-	//This input serves to select different fractional dividers to acheive 1.789772MHz for the sound Z80 and AY-3-8910s
-	//depending on whether Time Pilot runs with original or underclocked timings to normalize sync frequencies
-	input                underclock,
-
+	// Hiscore interface
 	input         [15:0] hs_address,
 	input          [7:0] hs_data_in,
 	output         [7:0] hs_data_out,
 	input                hs_write
 );
 
-//Linking signals between PCBs (main CPU board)
-// TODO: A5, A6, irq_trigger, cs_controls_dip1, cs_dip2 are outputs from
-// TimePilot_CPU that were consumed by the old TimePilot_SND. They are
-// kept here so TimePilot_CPU compiles; they will be removed in Task 3.
-wire A5, A6, irq_trigger, cs_sounddata, cs_controls_dip1, cs_dip2;
-wire [7:0] cpubrd_D;
-// Tie controls_dip to 8'hFF (no input) — old sound board drove this;
-// Blue Print reads controls directly on the main CPU. Will be removed in Task 3.
-wire [7:0] controls_dip = 8'hFF;
+// Sound interface between CPU and sound board
+wire [7:0] sound_cmd;
+wire       sound_cmd_wr;
+wire [7:0] dipsw_readback;
 
-// Sound interface
-wire [7:0] sound_cmd = cpubrd_D;       // Sound command byte from main CPU
-wire       sound_cmd_wr = cs_sounddata; // Pulse when main CPU writes sound data
-wire [7:0] dipsw_readback;             // Sound board → main CPU for 0xC003 reads
-
-//ROM loader signals for MISTer (loads ROMs from SD card)
+// ROM loader signals for MISTer (loads ROMs from SD card)
 wire main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i;
 wire tile0_cs_i, tile1_cs_i;
 wire spr_r_cs_i, spr_b_cs_i, spr_g_cs_i;
 
-// Filter ioctl_wr for index 0 (main board ROMs) and index 1 (sound ROMs)
-wire ioctl_wr_main = ioctl_wr && (ioctl_index == 8'd0);
-wire ioctl_wr_snd  = ioctl_wr && (ioctl_index == 8'd1);
+// Filter ioctl_wr for index 0 (CPU board ROMs) and index 1 (sound ROMs)
+wire ioctl_wr_cpu = ioctl_wr && (ioctl_index == 8'd0);
+wire ioctl_wr_snd = ioctl_wr && (ioctl_index == 8'd1);
 
 // Sound ROM chip selects (within index 1's address space)
-wire snd_rom1_cs_i = (ioctl_addr < 25'h1000);                              // First 4KB
-wire snd_rom2_cs_i = (ioctl_addr >= 25'h1000) && (ioctl_addr < 25'h2000);  // Second 4KB
+wire snd_rom1_cs_i = (ioctl_addr < 25'h1000);
+wire snd_rom2_cs_i = (ioctl_addr >= 25'h1000) && (ioctl_addr < 25'h2000);
 
-//MiSTer data write selector (active for ROM index 0 only)
+// MiSTer data write selector (active for ROM index 0 only)
 selector DLSEL
 (
 	.ioctl_addr(ioctl_addr),
@@ -105,12 +96,12 @@ selector DLSEL
 	.spr_g_cs(spr_g_cs_i)
 );
 
-//TODO: Reconnect when CPU board is rewritten (Task 3)
-//Instantiate main PCB
-TimePilot_CPU main_pcb
+// Instantiate main CPU board
+BluePrint_CPU main_pcb
 (
 	.reset(reset),
 	.clk_49m(clk_49m),
+
 	.red(video_r),
 	.green(video_g),
 	.blue(video_b),
@@ -121,35 +112,29 @@ TimePilot_CPU main_pcb
 	.video_vblank(video_vblank),
 	.ce_pix(ce_pix),
 
+	.p1_controls(p1_controls),
+	.p2_controls(p2_controls),
+	.dipsw_readback(dipsw_readback),
+
+	.sound_cmd(sound_cmd),
+	.sound_cmd_wr(sound_cmd_wr),
+
 	.h_center(h_center),
 	.v_center(v_center),
 
-	.controls_dip(controls_dip),
-	.cpubrd_Dout(cpubrd_D),
-	.cpubrd_A5(A5),
-	.cpubrd_A6(A6),
-	.cs_sounddata(cs_sounddata),
-	.irq_trigger(irq_trigger),
-	.cs_dip2(cs_dip2),
-	.cs_controls_dip1(cs_controls_dip1),
-
-	// TODO: These port mappings are placeholders - will be replaced when
-	// CPU board module is rewritten for Blue Print in Task 3.
-	// Old Time Pilot used ep1-ep6 (8KB each) + color/lookup PROMs.
-	// Blue Print uses main1-main5 + tile0-tile1 + spr_r/b/g (all 4KB).
-	.ep1_cs_i(main1_cs_i),
-	.ep2_cs_i(main2_cs_i),
-	.ep3_cs_i(main3_cs_i),
-	.ep4_cs_i(main4_cs_i),
-	.ep5_cs_i(main5_cs_i),
-	.ep6_cs_i(tile0_cs_i),
-	.cp1_cs_i(tile1_cs_i),
-	.cp2_cs_i(spr_r_cs_i),
-	.tl_cs_i(spr_b_cs_i),
-	.sl_cs_i(spr_g_cs_i),
+	.main1_cs_i(main1_cs_i),
+	.main2_cs_i(main2_cs_i),
+	.main3_cs_i(main3_cs_i),
+	.main4_cs_i(main4_cs_i),
+	.main5_cs_i(main5_cs_i),
+	.tile0_cs_i(tile0_cs_i),
+	.tile1_cs_i(tile1_cs_i),
+	.spr_r_cs_i(spr_r_cs_i),
+	.spr_b_cs_i(spr_b_cs_i),
+	.spr_g_cs_i(spr_g_cs_i),
 	.ioctl_addr(ioctl_addr),
-	.ioctl_wr(ioctl_wr_main),
 	.ioctl_data(ioctl_data),
+	.ioctl_wr(ioctl_wr_cpu),
 
 	.pause(pause),
 
@@ -159,7 +144,7 @@ TimePilot_CPU main_pcb
 	.hs_write(hs_write)
 );
 
-//Instantiate sound PCB
+// Instantiate sound PCB
 BluePrint_SND sound_pcb
 (
 	.reset(reset),
