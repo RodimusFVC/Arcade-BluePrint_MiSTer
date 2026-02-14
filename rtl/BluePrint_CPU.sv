@@ -207,11 +207,12 @@ reg  [11:0] tile_render_addr;
 eprom_4k tile_rom0(.CLK(clk_49m), .ADDR(tile_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile0_cs_i), .WR(ioctl_wr), .DATA(tile0_D));
 eprom_4k tile_rom1(.CLK(clk_49m), .ADDR(tile_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile1_cs_i), .WR(ioctl_wr), .DATA(tile1_D));
 
-// Sprite ROMs (3x 4KB) — address inputs are placeholders, will be connected in Task 3C
+// Sprite ROMs (3x 4KB) — addressed by sprite scanner
 wire [7:0] spr_r_D, spr_b_D, spr_g_D;
-eprom_4k spr_rom_r(.CLK(clk_49m), .ADDR(12'd0), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_r_cs_i), .WR(ioctl_wr), .DATA(spr_r_D));
-eprom_4k spr_rom_b(.CLK(clk_49m), .ADDR(12'd0), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_b_cs_i), .WR(ioctl_wr), .DATA(spr_b_D));
-eprom_4k spr_rom_g(.CLK(clk_49m), .ADDR(12'd0), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_g_cs_i), .WR(ioctl_wr), .DATA(spr_g_D));
+reg  [11:0] spr_render_addr;
+eprom_4k spr_rom_r(.CLK(clk_49m), .ADDR(spr_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_r_cs_i), .WR(ioctl_wr), .DATA(spr_r_D));
+eprom_4k spr_rom_b(.CLK(clk_49m), .ADDR(spr_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_b_cs_i), .WR(ioctl_wr), .DATA(spr_b_D));
+eprom_4k spr_rom_g(.CLK(clk_49m), .ADDR(spr_render_addr), .CLK_DL(clk_49m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_g_cs_i), .WR(ioctl_wr), .DATA(spr_g_D));
 
 //-------------------------------------------------------------- RAM -----------------------------------------------------------//
 
@@ -264,15 +265,15 @@ dpram_dc #(.widthad_a(8)) scroll_ram
 	.address_b(scroll_render_addr), .data_b(8'd0), .q_b(scroll_render_D)
 );
 
-// Sprite RAM (256 bytes)
-wire [7:0] sprite_D;
-spram #(8, 8) sprite_ram
+// Sprite RAM (256 bytes) — port A: CPU, port B: sprite scanner
+wire [7:0] sprite_cpu_D, sprite_scan_D;
+reg  [7:0] sprite_scan_addr;
+dpram_dc #(.widthad_a(8)) sprite_ram
 (
-	.clk(clk_49m),
-	.we(cs_sprite & ~n_wr),
-	.addr(z80_A[7:0]),
-	.data(z80_Dout),
-	.q(sprite_D)
+	.clock_a(clk_49m), .wren_a(cs_sprite & ~n_wr),
+	.address_a(z80_A[7:0]), .data_a(z80_Dout), .q_a(sprite_cpu_D),
+	.clock_b(clk_49m), .wren_b(1'b0),
+	.address_b(sprite_scan_addr), .data_b(8'd0), .q_b(sprite_scan_D)
 );
 
 //-------------------------------------------------------- I/O registers -------------------------------------------------------//
@@ -310,7 +311,7 @@ wire [7:0] z80_Din = cs_rom                                ? rom_D :
                      (cs_vram & n_wr)                       ? vram_cpu_D :
                      (cs_cram & n_wr)                       ? cram_cpu_D :
                      (cs_scroll & n_wr)                     ? scroll_cpu_D :
-                     (cs_sprite & n_wr)                     ? sprite_D :
+                     (cs_sprite & n_wr)                     ? sprite_cpu_D :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b00) ? p1_controls :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b01) ? p2_controls :
                      (cs_io_c & ~n_rd & z80_A[1:0] == 2'b11) ? dipsw_readback :
@@ -457,10 +458,220 @@ wire [4:0] b_tile = pen_b ? (tile_intensity ? 5'd24 : 5'd31) : 5'd0;
 
 wire tile_transparent = (tile_pixel == 2'b00);
 
+//--------------------------------------------------- Sprite rendering pipeline -------------------------------------------------//
+
+// Double-buffered line buffers (256 entries x 3 bits each, 0 = transparent)
+reg [2:0] linebuf0 [0:255];
+reg [2:0] linebuf1 [0:255];
+reg       linebuf_sel = 1'b0; // Which buffer is being displayed
+
+// Swap line buffers at start of each scanline
+always_ff @(posedge clk_49m) begin
+	if (!reset)
+		linebuf_sel <= 1'b0;
+	else if (cen_5m && h_cnt == 9'd0)
+		linebuf_sel <= ~linebuf_sel;
+end
+
+// Sprite scanner state machine — runs at clk_49m during HBlank
+// Scans all 64 sprites per line, writes matching pixels to line buffer
+reg [3:0] spr_state;
+reg [5:0] spr_idx;           // Current sprite index (0-63)
+reg [7:0] spr_byte0;         // Y position byte
+reg [7:0] spr_byte1;         // Tile code
+reg [7:0] spr_byte2;         // Flags (bit 6 = flipX, bit 7 = next sprite's flipY)
+reg [7:0] spr_byte3;         // X position
+reg       spr_flipy;         // FlipY for current sprite (from previous sprite's byte2[7])
+reg       prev_sprite_flipy; // Carried forward from previous sprite
+reg [7:0] spr_rom_r_lat, spr_rom_b_lat, spr_rom_g_lat; // Latched ROM data
+reg [3:0] spr_pix_cnt;       // Pixel counter within sprite row (0-7)
+reg [7:0] spr_clear_addr;    // Address for clearing line buffer
+reg [7:0] next_scanline;     // The scanline we're preparing sprites for
+
+localparam SPR_IDLE     = 4'd0;
+localparam SPR_CLEAR    = 4'd1;
+localparam SPR_INIT_RD  = 4'd2; // Read sprite 63 byte 2 for initial flipY
+localparam SPR_INIT_LAT = 4'd3;
+localparam SPR_RD_B0    = 4'd4; // Read byte 0 (Y)
+localparam SPR_RD_B1    = 4'd5; // Read byte 1 (tile code)
+localparam SPR_RD_B2    = 4'd6; // Read byte 2 (flags)
+localparam SPR_RD_B3    = 4'd7; // Read byte 3 (X)
+localparam SPR_ROMADDR  = 4'd8; // Set ROM address, wait for data
+localparam SPR_ROMWAIT  = 4'd9; // ROM data available
+localparam SPR_PIXELS   = 4'd10; // Write pixels to line buffer
+localparam SPR_NEXT     = 4'd11; // Advance to next sprite
+
+always_ff @(posedge clk_49m) begin
+	if (!reset) begin
+		spr_state <= SPR_IDLE;
+		spr_idx <= 6'd0;
+		prev_sprite_flipy <= 1'b0;
+		spr_clear_addr <= 8'd0;
+	end else begin
+		case (spr_state)
+			SPR_IDLE: begin
+				// Start sprite scan at beginning of HBlank
+				if (cen_5m && h_cnt == 9'd256) begin
+					// Compute next scanline number (the line being prepared)
+					next_scanline <= v_cnt[7:0] - 8'd15;
+					spr_clear_addr <= 8'd0;
+					spr_state <= SPR_CLEAR;
+				end
+			end
+
+			SPR_CLEAR: begin
+				// Clear target line buffer (writing to ~linebuf_sel)
+				if (~linebuf_sel)
+					linebuf1[spr_clear_addr] <= 3'd0;
+				else
+					linebuf0[spr_clear_addr] <= 3'd0;
+				if (spr_clear_addr == 8'd255) begin
+					// Read sprite 63's byte 2 for initial prev_sprite_flipy
+					sprite_scan_addr <= 8'hFE; // sprite 63, byte 2
+					spr_state <= SPR_INIT_RD;
+				end else
+					spr_clear_addr <= spr_clear_addr + 8'd1;
+			end
+
+			SPR_INIT_RD: begin
+				// Wait 1 cycle for RAM read
+				spr_state <= SPR_INIT_LAT;
+			end
+
+			SPR_INIT_LAT: begin
+				prev_sprite_flipy <= sprite_scan_D[7];
+				spr_idx <= 6'd0;
+				// Start reading sprite 0, byte 0
+				sprite_scan_addr <= 8'd0; // sprite 0, byte 0
+				spr_state <= SPR_RD_B0;
+			end
+
+			SPR_RD_B0: begin
+				// Wait for byte 0, request byte 1
+				sprite_scan_addr <= {spr_idx, 2'd1};
+				spr_state <= SPR_RD_B1;
+			end
+
+			SPR_RD_B1: begin
+				// Latch byte 0 (Y), request byte 2
+				spr_byte0 <= sprite_scan_D;
+				sprite_scan_addr <= {spr_idx, 2'd2};
+				spr_state <= SPR_RD_B2;
+			end
+
+			SPR_RD_B2: begin
+				// Latch byte 1 (tile code), request byte 3
+				spr_byte1 <= sprite_scan_D;
+				sprite_scan_addr <= {spr_idx, 2'd3};
+				spr_state <= SPR_RD_B3;
+			end
+
+			SPR_RD_B3: begin
+				// Latch byte 2 (flags)
+				spr_byte2 <= sprite_scan_D;
+				spr_flipy <= prev_sprite_flipy;
+				spr_state <= SPR_ROMADDR;
+			end
+
+			SPR_ROMADDR: begin
+				// Latch byte 3 (X), check if sprite is on this scanline
+				spr_byte3 <= sprite_scan_D;
+				prev_sprite_flipy <= spr_byte2[7]; // Save for next sprite
+
+				// Compute sprite Y and check range
+				// sy = 240 - byte0, draw at sy-1, so visible at (sy-1) to (sy-1+15)
+				// Check: next_scanline - (240 - byte0 - 1) in range 0-15
+				// Equivalent: next_scanline - 239 + byte0 in range 0-15
+				begin
+					reg [8:0] raw_line;
+					raw_line = {1'b0, next_scanline} - 9'd239 + {1'b0, spr_byte0};
+					if (raw_line[8] || raw_line[7:4] != 4'd0) begin
+						// Not on this scanline — skip to next sprite
+						spr_state <= SPR_NEXT;
+					end else begin
+						// Hit! Compute ROM address
+						reg [3:0] line_in_sprite;
+						line_in_sprite = spr_flipy ? (4'd15 - raw_line[3:0]) : raw_line[3:0];
+						spr_render_addr <= {spr_byte1, line_in_sprite};
+						spr_state <= SPR_ROMWAIT;
+					end
+				end
+			end
+
+			SPR_ROMWAIT: begin
+				// Wait 1 cycle for ROM data
+				spr_state <= SPR_PIXELS;
+				spr_pix_cnt <= 4'd0;
+				// Latch ROM data
+				spr_rom_r_lat <= spr_r_D;
+				spr_rom_b_lat <= spr_b_D;
+				spr_rom_g_lat <= spr_g_D;
+			end
+
+			SPR_PIXELS: begin
+				// Write 8 pixels to line buffer
+				begin
+					reg [2:0] bit_pos;
+					reg [2:0] pixel_val;
+					reg [7:0] x_pos;
+
+					bit_pos = spr_byte2[6] ? spr_pix_cnt[2:0] : (3'd7 - spr_pix_cnt[2:0]);
+					pixel_val = {spr_rom_g_lat[bit_pos], spr_rom_b_lat[bit_pos], spr_rom_r_lat[bit_pos]};
+					x_pos = spr_byte3 + {4'd0, spr_pix_cnt[2:0]} + 8'd2; // +2 offset per MAME
+
+					if (pixel_val != 3'd0) begin
+						if (~linebuf_sel)
+							linebuf1[x_pos] <= pixel_val;
+						else
+							linebuf0[x_pos] <= pixel_val;
+					end
+
+					if (spr_pix_cnt == 4'd7)
+						spr_state <= SPR_NEXT;
+					else
+						spr_pix_cnt <= spr_pix_cnt + 4'd1;
+				end
+			end
+
+			SPR_NEXT: begin
+				if (spr_idx == 6'd63)
+					spr_state <= SPR_IDLE;
+				else begin
+					spr_idx <= spr_idx + 6'd1;
+					sprite_scan_addr <= {spr_idx + 6'd1, 2'd0}; // Next sprite byte 0
+					spr_state <= SPR_RD_B0;
+				end
+			end
+
+			default: spr_state <= SPR_IDLE;
+		endcase
+	end
+end
+
+//---------------------------------------------------- Sprite pixel readout -----------------------------------------------------//
+
+wire [2:0] sprite_pixel = linebuf_sel ? linebuf1[h_cnt[7:0]] : linebuf0[h_cnt[7:0]];
+wire sprite_transparent = (sprite_pixel == 3'b000);
+
+wire [4:0] r_sprite = sprite_pixel[0] ? 5'd31 : 5'd0; // bit 0 = R
+wire [4:0] g_sprite = sprite_pixel[2] ? 5'd31 : 5'd0; // bit 2 = G
+wire [4:0] b_sprite = sprite_pixel[1] ? 5'd31 : 5'd0; // bit 1 = B
+
 //------------------------------------------------------- Video output ----------------------------------------------------------//
 
-assign red   = (hblk | vblk) ? 5'd0 : r_tile;
-assign green = (hblk | vblk) ? 5'd0 : g_tile;
-assign blue  = (hblk | vblk) ? 5'd0 : b_tile;
+// Compositing: priority-1 tiles > sprites > priority-0 tiles > black
+wire [4:0] r_final = (tile_priority_latch && !tile_transparent) ? r_tile :
+                     (!sprite_transparent)                       ? r_sprite :
+                     r_tile;
+wire [4:0] g_final = (tile_priority_latch && !tile_transparent) ? g_tile :
+                     (!sprite_transparent)                       ? g_sprite :
+                     g_tile;
+wire [4:0] b_final = (tile_priority_latch && !tile_transparent) ? b_tile :
+                     (!sprite_transparent)                       ? b_sprite :
+                     b_tile;
+
+assign red   = (hblk | vblk) ? 5'd0 : r_final;
+assign green = (hblk | vblk) ? 5'd0 : g_final;
+assign blue  = (hblk | vblk) ? 5'd0 : b_final;
 
 endmodule
