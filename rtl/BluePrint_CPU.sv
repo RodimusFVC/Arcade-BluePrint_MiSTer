@@ -341,6 +341,7 @@ wire [2:0] fine_x = h_cnt[2:0];
 
 // Current screen Y (offset by vblank start)
 wire [7:0] screen_y = v_cnt[7:0] - 8'd16;
+wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
 
 always_ff @(posedge clk_49m) begin
 	if (!reset) begin
@@ -368,20 +369,20 @@ always_ff @(posedge clk_49m) begin
 		if (h_cnt == 9'd0)
 			prev_bank_bit <= 1'b0;
 
-		// Kick off fetch for next tile when we're at pixel 0 of current tile
-		// (fetching the tile that starts 8 pixels from now)
-		if (fine_x == 3'd0)
+		// Kick off fetch for next tile during visible lines only
+		if (fine_x == 3'd0 && visible_line)
 			fetch_state <= 3'd1;
 	end else if (fetch_state != 3'd0) begin
 		// Multi-cycle fetch machine running at clk_49m between pixel ticks
 		case (fetch_state)
 			3'd1: begin
 				// Step 1: Compute fetch column and set scroll RAM address
-				fetch_col <= h_next[7:3]; // column of the NEXT tile (8 pixels ahead)
+				// Fetch one tile ahead: current column + 1, so data is ready for next fine_x==0 latch
+				fetch_col <= h_cnt[7:3] + 5'd1;
 				if (flip)
-					scroll_render_addr <= (8'd32 - {3'd0, h_next[7:3]}) & 8'hFF;
+					scroll_render_addr <= (8'd32 - {3'd0, h_cnt[7:3] + 5'd1}) & 8'hFF;
 				else
-					scroll_render_addr <= (8'd30 - {3'd0, h_next[7:3]}) & 8'hFF;
+					scroll_render_addr <= (8'd30 - {3'd0, h_cnt[7:3] + 5'd1}) & 8'hFF;
 				fetch_state <= 3'd2;
 			end
 			3'd2: begin
@@ -392,7 +393,8 @@ always_ff @(posedge clk_49m) begin
 			3'd3: begin
 				// Step 3: Compute VRAM/CRAM tile index and set addresses
 				// TILEMAP_SCAN_COLS_FLIP_X: tile_index = (31 - col) * 32 + tile_row
-				fetch_tile_index <= ({5'd0, (5'd31 - fetch_col)} * 10'd32) + {5'd0, fetch_scrolled_y[7:3]};
+				// (31-col) in bits [9:5], row in bits [4:0] — equivalent to (31-col)<<5 + row
+				fetch_tile_index <= {(5'd31 - fetch_col), fetch_scrolled_y[7:3]};
 				fetch_state <= 3'd4;
 			end
 			3'd4: begin

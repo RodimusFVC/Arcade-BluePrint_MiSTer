@@ -65,7 +65,11 @@ module BluePrint
 // Sound interface between CPU and sound board
 wire [7:0] sound_cmd;
 wire       sound_cmd_wr;
-wire [7:0] dipsw_readback;
+// TEMPORARY: bypass sound board DIP readback until sound is verified working.
+// The sound CPU reads dip_sw[7:0] from AY2 Port A and writes it to AY1 Port A
+// which main CPU reads at 0xC003. Short-circuit this path for testing.
+wire [7:0] dipsw_readback_from_snd;
+wire [7:0] dipsw_readback = dip_sw[7:0]; // TEMP: direct DIP passthrough
 
 // ROM loader signals for MISTer (loads ROMs from SD card)
 wire main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i;
@@ -152,7 +156,7 @@ BluePrint_SND sound_pcb
 	.sound_cmd(sound_cmd),
 	.sound_cmd_wr(sound_cmd_wr),
 	.dip_sw(dip_sw),
-	.dipsw_readback(dipsw_readback),
+	.dipsw_readback(dipsw_readback_from_snd),
 	.sound(sound),
 	.vblank(video_vblank),
 	.snd_rom1_cs_i(snd_rom1_cs_i),
