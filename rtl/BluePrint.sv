@@ -47,6 +47,7 @@ module TimePilot
 	input         [24:0] ioctl_addr,
 	input          [7:0] ioctl_data,
 	input                ioctl_wr,
+	input          [7:0] ioctl_index,
 
 	input                pause,
 
@@ -60,14 +61,33 @@ module TimePilot
 	input                hs_write
 );
 
-//Linking signals between PCBs
+//Linking signals between PCBs (main CPU board)
+// TODO: A5, A6, irq_trigger, cs_controls_dip1, cs_dip2 are outputs from
+// TimePilot_CPU that were consumed by the old TimePilot_SND. They are
+// kept here so TimePilot_CPU compiles; they will be removed in Task 3.
 wire A5, A6, irq_trigger, cs_sounddata, cs_controls_dip1, cs_dip2;
-wire [7:0] controls_dip, cpubrd_D;
+wire [7:0] cpubrd_D;
+// Tie controls_dip to 8'hFF (no input) — old sound board drove this;
+// Blue Print reads controls directly on the main CPU. Will be removed in Task 3.
+wire [7:0] controls_dip = 8'hFF;
+
+// Sound interface
+wire [7:0] sound_cmd = cpubrd_D;       // Sound command byte from main CPU
+wire       sound_cmd_wr = cs_sounddata; // Pulse when main CPU writes sound data
+wire [7:0] dipsw_readback;             // Sound board → main CPU for 0xC003 reads
 
 //ROM loader signals for MISTer (loads ROMs from SD card)
 wire main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i;
 wire tile0_cs_i, tile1_cs_i;
 wire spr_r_cs_i, spr_b_cs_i, spr_g_cs_i;
+
+// Filter ioctl_wr for index 0 (main board ROMs) and index 1 (sound ROMs)
+wire ioctl_wr_main = ioctl_wr && (ioctl_index == 8'd0);
+wire ioctl_wr_snd  = ioctl_wr && (ioctl_index == 8'd1);
+
+// Sound ROM chip selects (within index 1's address space)
+wire snd_rom1_cs_i = (ioctl_addr < 25'h1000);                              // First 4KB
+wire snd_rom2_cs_i = (ioctl_addr >= 25'h1000) && (ioctl_addr < 25'h2000);  // Second 4KB
 
 //MiSTer data write selector (active for ROM index 0 only)
 selector DLSEL
@@ -128,7 +148,7 @@ TimePilot_CPU main_pcb
 	.tl_cs_i(spr_b_cs_i),
 	.sl_cs_i(spr_g_cs_i),
 	.ioctl_addr(ioctl_addr),
-	.ioctl_wr(ioctl_wr),
+	.ioctl_wr(ioctl_wr_main),
 	.ioctl_data(ioctl_data),
 
 	.pause(pause),
@@ -139,39 +159,22 @@ TimePilot_CPU main_pcb
 	.hs_write(hs_write)
 );
 
-//TODO: Reconnect when sound board is rewritten (Task 2)
 //Instantiate sound PCB
-TimePilot_SND sound_pcb
+BluePrint_SND sound_pcb
 (
 	.reset(reset),
 	.clk_49m(clk_49m),
-	.irq_trigger(irq_trigger),
-	.cs_sounddata(cs_sounddata),
+	.sound_cmd(sound_cmd),
+	.sound_cmd_wr(sound_cmd_wr),
 	.dip_sw(dip_sw),
-	.coin(coin),
-	.start_buttons(start_buttons),
-	.p1_joystick(p1_joystick),
-	.p2_joystick(p2_joystick),
-	.p1_fire(p1_fire),
-	.p2_fire(p2_fire),
-	.btn_service(btn_service),
-
-	.cs_controls_dip1(cs_controls_dip1),
-	.cs_dip2(cs_dip2),
-	.cpubrd_A5(A5),
-	.cpubrd_A6(A6),
-	.cpubrd_Din(cpubrd_D),
-	.controls_dip(controls_dip),
+	.dipsw_readback(dipsw_readback),
 	.sound(sound),
-
-	.underclock(underclock),
-
-	// TODO: Sound ROM CS will come from a separate sound ROM selector
-	// for index 1 when sound board is rewritten in Task 2.
-	.ep7_cs_i(1'b0),
+	.vblank(video_vblank),
+	.snd_rom1_cs_i(snd_rom1_cs_i),
+	.snd_rom2_cs_i(snd_rom2_cs_i),
 	.ioctl_addr(ioctl_addr),
-	.ioctl_wr(ioctl_wr),
-	.ioctl_data(ioctl_data)
+	.ioctl_data(ioctl_data),
+	.ioctl_wr(ioctl_wr_snd)
 );
 
 endmodule

@@ -529,11 +529,12 @@ TimePilot TP_inst
 	.sound(audio),                                         // output [15:0] sound
 	
 	.ioctl_addr(ioctl_addr),
-	.ioctl_wr(ioctl_wr && !ioctl_index),
+	.ioctl_wr(ioctl_wr),
 	.ioctl_data(ioctl_dout),
-	
+	.ioctl_index(ioctl_index),
+
 	.pause(pause_cpu),
-	
+
 	//Flag to signal that Time Pilot has been underclocked to normalize video timings in order to maintain consistent sound timings and pitch
 	.underclock(status[21]),
 

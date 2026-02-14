@@ -237,29 +237,6 @@ module eprom_6
 	);
 endmodule
 
-// TODO: TEMPORARY — remove when BluePrint_SND.sv is rewritten
-module eprom_7
-(
-	input logic        CLK,
-	input logic        CLK_DL,
-	input logic [11:0] ADDR,
-	input logic [24:0] ADDR_DL,
-	input logic [7:0]  DATA_IN,
-	input logic        CS_DL,
-	input logic        WR,
-	output logic [7:0] DATA
-);
-	dpram_dc #(.widthad_a(12)) eprom_7
-	(
-		.clock_a(CLK),
-		.address_a(ADDR[11:0]),
-		.q_a(DATA[7:0]),
-		.clock_b(CLK_DL),
-		.address_b(ADDR_DL[11:0]),
-		.data_b(DATA_IN),
-		.wren_b(WR & CS_DL)
-	);
-endmodule
 
 // TODO: TEMPORARY — remove when BluePrint_CPU.sv is rewritten
 module color_prom_1
