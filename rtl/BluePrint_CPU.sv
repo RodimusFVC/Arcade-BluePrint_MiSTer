@@ -319,120 +319,126 @@ wire [7:0] z80_Din = cs_rom                                ? rom_D :
 
 //--------------------------------------------------- Tilemap rendering pipeline ------------------------------------------------//
 
-// Tile fetch state machine — runs at clk_49m speed between cen_5m ticks
-// With ~10 master clocks per pixel, we have plenty of time for the multi-cycle fetch
-reg [2:0] fetch_state;
-reg [7:0] tile_shift0, tile_shift1;    // Shift registers for 2 bitplanes
-reg [6:0] tile_color_latch;            // Latched color for current tile
-reg       tile_priority_latch;         // Latched priority for current tile
-reg       prev_bank_bit;               // Bank bit carried from previous tile's cram[6]
+reg [7:0] tile_shift0, tile_shift1;
+reg [6:0] tile_color_latch;
+reg       tile_priority_latch;
+reg       prev_bank_bit;
 
-// Pre-computed values for the NEXT tile to fetch
-reg [4:0] fetch_col;                   // Column we're fetching for
-reg [7:0] fetch_scrolled_y;            // Scrolled Y for the fetch column
-reg [9:0] fetch_tile_index;            // VRAM/CRAM index for the tile
-reg [8:0] fetch_tile_code;             // Full tile code with bank bit
-reg [6:0] fetch_color;                 // Color from CRAM
-reg       fetch_priority;              // Priority from CRAM
-reg [7:0] fetch_tile0, fetch_tile1;    // Fetched tile ROM data ready to latch
+// Pipeline temporaries
+reg [7:0] pipe_tile0, pipe_tile1;
+reg [6:0] pipe_color;
+reg       pipe_priority;
+reg [2:0] pipe_fine_y;
 
-// Next pixel position (one pixel ahead for pre-fetch addressing)
-wire [8:0] h_next = (h_cnt == 9'd319) ? 9'd0 : h_cnt + 9'd1;
+wire [4:0] screen_col = h_cnt[7:3];
 wire [2:0] fine_x = h_cnt[2:0];
-
-// Current screen Y (offset by vblank start)
 wire [7:0] screen_y = v_cnt[7:0] - 8'd16;
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
 
+// cen_5m-stepped pipeline: fetches tile data for column (screen_col + 1) so it's
+// ready to latch into shift registers at the NEXT fine_x==0.
+//
+// Timeline (all operations on cen_5m):
+//   fine_x=0: Latch pipe data into shift regs. Set scroll_render_addr for col+1.
+//   fine_x=1: Scroll data ready. Compute scrolled_y. Set vram/cram addr.
+//   fine_x=2: Wait for VRAM/CRAM read.
+//   fine_x=3: VRAM/CRAM data ready. Compute tile ROM addr. Update prev_bank_bit.
+//   fine_x=4: Tile ROM data ready. Save into pipe_tile0/pipe_tile1.
+//   fine_x=5,6,7: Just shift pixels.
+
 always_ff @(posedge clk_49m) begin
 	if (!reset) begin
-		fetch_state <= 3'd0;
 		tile_shift0 <= 8'd0;
 		tile_shift1 <= 8'd0;
 		tile_color_latch <= 7'd0;
 		tile_priority_latch <= 1'b0;
 		prev_bank_bit <= 1'b0;
+		pipe_tile0 <= 8'd0;
+		pipe_tile1 <= 8'd0;
+		pipe_color <= 7'd0;
+		pipe_priority <= 1'b0;
+		pipe_fine_y <= 3'd0;
 	end else if (cen_5m) begin
-		// On each pixel tick: shift out current pixel, and latch new tile at tile boundary
-		if (fine_x == 3'd0) begin
-			// Latch new tile data from fetch pipeline
-			tile_shift0 <= fetch_tile0;
-			tile_shift1 <= fetch_tile1;
-			tile_color_latch <= fetch_color;
-			tile_priority_latch <= fetch_priority;
+		if (!visible_line) begin
+			// During VBlank: output black, reset pipeline
+			tile_shift0 <= 8'd0;
+			tile_shift1 <= 8'd0;
+			if (v_cnt == 9'd15 && h_cnt == 9'd0)
+				prev_bank_bit <= 1'b0;
 		end else begin
-			// Shift registers left
-			tile_shift0 <= {tile_shift0[6:0], 1'b0};
-			tile_shift1 <= {tile_shift1[6:0], 1'b0};
-		end
-
-		// Reset prev_bank_bit at start of each scanline
-		if (h_cnt == 9'd0)
-			prev_bank_bit <= 1'b0;
-
-		// Kick off fetch for next tile during visible lines only
-		if (fine_x == 3'd0 && visible_line)
-			fetch_state <= 3'd1;
-	end else if (fetch_state != 3'd0) begin
-		// Multi-cycle fetch machine running at clk_49m between pixel ticks
-		case (fetch_state)
-			3'd1: begin
-				// Step 1: Compute fetch column and set scroll RAM address
-				// Fetch one tile ahead: current column + 1, so data is ready for next fine_x==0 latch
-				fetch_col <= h_cnt[7:3] + 5'd1;
-				if (flip)
-					scroll_render_addr <= (8'd32 - {3'd0, h_cnt[7:3] + 5'd1}) & 8'hFF;
-				else
-					scroll_render_addr <= (8'd30 - {3'd0, h_cnt[7:3] + 5'd1}) & 8'hFF;
-				fetch_state <= 3'd2;
-			end
-			3'd2: begin
-				// Step 2: Scroll RAM data available — compute scrolled Y and tile index
-				fetch_scrolled_y <= screen_y + scroll_render_D;
-				fetch_state <= 3'd3;
-			end
-			3'd3: begin
-				// Step 3: Compute VRAM/CRAM tile index and set addresses
-				// TILEMAP_SCAN_COLS_FLIP_X: tile_index = (31 - col) * 32 + tile_row
-				// (31-col) in bits [9:5], row in bits [4:0] — equivalent to (31-col)<<5 + row
-				fetch_tile_index <= {(5'd31 - fetch_col), fetch_scrolled_y[7:3]};
-				fetch_state <= 3'd4;
-			end
-			3'd4: begin
-				// Step 4: Set VRAM and CRAM read addresses
-				vram_render_addr <= fetch_tile_index;
-				cram_render_addr <= fetch_tile_index;
-				fetch_state <= 3'd5;
-			end
-			3'd5: begin
-				// Step 5: VRAM/CRAM data available — compute tile code and ROM address
-				fetch_color <= cram_render_D[6:0];
-				fetch_priority <= cram_render_D[7];
-				fetch_tile_code <= {prev_bank_bit & gfx_bank, vram_render_D};
-				prev_bank_bit <= cram_render_D[6];
-				// Compute fine_y with flip support
-				if (flip)
-					tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, 3'd7 - fetch_scrolled_y[2:0]};
-				else
-					tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, fetch_scrolled_y[2:0]};
-				fetch_state <= 3'd6;
-			end
-			3'd6: begin
-				// Step 6: Tile ROM data available — latch it
-				if (flip) begin
-					// Flip X: reverse bit order
-					fetch_tile0 <= {tile0_D[0], tile0_D[1], tile0_D[2], tile0_D[3],
-					                tile0_D[4], tile0_D[5], tile0_D[6], tile0_D[7]};
-					fetch_tile1 <= {tile1_D[0], tile1_D[1], tile1_D[2], tile1_D[3],
-					                tile1_D[4], tile1_D[5], tile1_D[6], tile1_D[7]};
-				end else begin
-					fetch_tile0 <= tile0_D;
-					fetch_tile1 <= tile1_D;
+			case (fine_x)
+				3'd0: begin
+					if (h_cnt < 9'd256) begin
+						// LATCH: load shift registers for this tile
+						tile_shift0 <= pipe_tile0;
+						tile_shift1 <= pipe_tile1;
+						tile_color_latch <= pipe_color;
+						tile_priority_latch <= pipe_priority;
+					end else begin
+						tile_shift0 <= 8'd0;
+						tile_shift1 <= 8'd0;
+					end
+					// START FETCH for next column
+					if (flip)
+						scroll_render_addr <= (8'd32 - {3'd0, screen_col + 5'd1}) & 8'hFF;
+					else
+						scroll_render_addr <= (8'd30 - {3'd0, screen_col + 5'd1}) & 8'hFF;
 				end
-				fetch_state <= 3'd0; // Done
-			end
-			default: fetch_state <= 3'd0;
-		endcase
+
+				3'd1: begin
+					// Scroll RAM data available — compute scrolled Y and set vram/cram addr
+					pipe_fine_y <= (screen_y + scroll_render_D) & 8'h07;
+					begin
+						reg [7:0] scrolled_y_full;
+						scrolled_y_full = screen_y + scroll_render_D;
+						vram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
+						cram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
+					end
+					tile_shift0 <= {tile_shift0[6:0], 1'b0};
+					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+				end
+
+				3'd2: begin
+					// Wait for VRAM/CRAM read
+					tile_shift0 <= {tile_shift0[6:0], 1'b0};
+					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+				end
+
+				3'd3: begin
+					// VRAM/CRAM data available — compute tile ROM address
+					pipe_color <= cram_render_D[6:0];
+					pipe_priority <= cram_render_D[7];
+					if (flip)
+						tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, 3'd7 - pipe_fine_y};
+					else
+						tile_render_addr <= {prev_bank_bit & gfx_bank, vram_render_D, pipe_fine_y};
+					prev_bank_bit <= cram_render_D[6];
+					tile_shift0 <= {tile_shift0[6:0], 1'b0};
+					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+				end
+
+				3'd4: begin
+					// Tile ROM data available — save for next latch
+					if (flip) begin
+						pipe_tile0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
+						               tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
+						pipe_tile1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
+						               tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
+					end else begin
+						pipe_tile0 <= tile0_D;
+						pipe_tile1 <= tile1_D;
+					end
+					tile_shift0 <= {tile_shift0[6:0], 1'b0};
+					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+				end
+
+				default: begin
+					// fine_x = 5, 6, 7: just shift
+					tile_shift0 <= {tile_shift0[6:0], 1'b0};
+					tile_shift1 <= {tile_shift1[6:0], 1'b0};
+				end
+			endcase
+		end
 	end
 end
 
