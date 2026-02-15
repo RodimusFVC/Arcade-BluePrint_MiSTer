@@ -164,7 +164,7 @@ always_ff @(posedge clk_49m) begin
 	end else begin
 		if (irq_ack)
 			n_irq <= 1'b1;
-		else if (cen_5m && vblk && !vblk_last)
+		else if (vblk && !vblk_last)
 			n_irq <= 1'b0;
 		vblk_last <= vblk;
 	end
@@ -286,7 +286,7 @@ always_ff @(posedge clk_49m) begin
 		flip <= 1'b0;
 		gfx_bank <= 1'b0;
 	end else if (cen_3m5 && cs_e000 && ~n_wr) begin
-		flip <= z80_Dout[1];
+		flip <= ~z80_Dout[1];
 		gfx_bank <= z80_Dout[2];
 	end
 end
