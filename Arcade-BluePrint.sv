@@ -440,7 +440,7 @@ wire ce_pix;
 
 wire rotate_ccw = 1;
 wire no_rotate = status[12] | direct_video;
-wire flip = no_rotate;
+wire flip = no_rotate;   // May need to remove ~
 wire video_rotated;
 screen_rotate screen_rotate(.*);
 
