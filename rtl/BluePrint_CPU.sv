@@ -391,8 +391,8 @@ always_ff @(posedge clk_49m) begin
 					begin
 						reg [7:0] scrolled_y_full;
 						scrolled_y_full = screen_y + scroll_render_D;
-						vram_render_addr <= {(screen_col + 5'd1), scrolled_y_full[7:3]};
-						cram_render_addr <= {(screen_col + 5'd1), scrolled_y_full[7:3]};
+						vram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
+						cram_render_addr <= {(5'd31 - (screen_col + 5'd1)), scrolled_y_full[7:3]};
 					end
 					tile_shift0 <= {1'b0, tile_shift0[7:1]};
 					tile_shift1 <= {1'b0, tile_shift1[7:1]};
