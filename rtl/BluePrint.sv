@@ -69,7 +69,7 @@ wire       sound_cmd_wr;
 // The sound CPU reads dip_sw[7:0] from AY2 Port A and writes it to AY1 Port A
 // which main CPU reads at 0xC003. Short-circuit this path for testing.
 wire [7:0] dipsw_readback_from_snd;
-wire [7:0] dipsw_readback = dip_sw[7:0]; // TEMP: direct DIP passthrough
+wire [7:0] dipsw_readback = dipsw_readback_from_snd;
 
 // ROM loader signals for MISTer (loads ROMs from SD card)
 wire main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i;

@@ -427,7 +427,8 @@ always_ff @(posedge clk_49m) begin
 					if (flip)
 						tile_render_addr <= {prev_bank_bit & gfx_bank,
 											vram_render_D,
-											3'd7 - pipe_fine_y};
+//											3'd7 - pipe_fine_y};
+											pipe_fine_y};
 					else
 						tile_render_addr <= {prev_bank_bit & gfx_bank,
 											vram_render_D,
