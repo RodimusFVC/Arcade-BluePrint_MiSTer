@@ -1,6 +1,6 @@
 <misterromdescription>
-    <n>Blue Print (Midway)</n>
-    <region>World</region>
+    <n>Blue Print (Jaleco)</n>
+    <region>Japan</region>
     <homebrew>no</homebrew>
     <bootleg>no</bootleg>
     <version></version>
@@ -37,22 +37,22 @@
         <dip bits="12,13" name="Difficulty" ids="Level 1,Level 2,Level 3,Level 4"/>
     </switches>
 
-    <rom index="0" md5="none" zip="blueprnt.zip">
+    <rom index="0" md5="none" zip="blueprnt.zip|blueprntj.zip">
         <!-- Main CPU ROMs (5× 4KB = 20KB) -->
-        <part crc="b20069a6" name="bp-1.1m"/>
-        <part crc="4a30302e" name="bp-2.1n"/>
-        <part crc="6866ca07" name="bp-3.1p"/>
-        <part crc="5d3cfac3" name="bp-4.1r"/>
-        <part crc="a556cac4" name="bp-5.1s"/>
+        <part crc="2e746693" name="bp-1j.1m"/>
+        <part crc="a0eb0b8e" name="bp-2j.1n"/>
+        <part crc="c34981bb" name="bp-3j.1p"/>
+        <part crc="525e77b5" name="bp-4j.1r"/>
+        <part crc="431a015f" name="bp-5j.1s"/>
         <!-- Tile ROMs (2× 4KB = 8KB) -->
-        <part crc="ac2a61bc" name="bg-1.3c"/>
-        <part crc="81fe85d7" name="bg-2.3d"/>
+        <part crc="43718c34" name="bg-1j.3c"/>
+        <part crc="d3ce077d" name="bg-2j.3d"/>
         <!-- Sprite ROMs (3× 4KB = 12KB, R/B/G bitplanes) -->
-        <part crc="a73b6483" name="red.17d"/>
-        <part crc="7d622550" name="blue.18d"/>
-        <part crc="09c7a518" name="green.20d"/>
+        <part crc="83da108f" name="redj.17d"/>
+        <part crc="b440f32f" name="bluej.18d"/>
+        <part crc="23026765" name="greenj.20d"/>
     </rom>
-    <rom index="1" md5="none" zip="blueprnt.zip">
+    <rom index="1" md5="none" zip="blueprnt.zip|blueprntj.zip">
         <!-- Sound CPU ROMs (2× 4KB = 8KB) -->
         <part crc="fd38777a" name="snd-1.3u"/>
         <part crc="33d5bf5b" name="snd-2.3v"/>
