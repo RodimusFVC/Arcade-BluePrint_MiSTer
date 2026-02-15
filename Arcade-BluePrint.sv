@@ -440,7 +440,7 @@ wire ce_pix;
 
 wire rotate_ccw = 1;
 wire no_rotate = status[12] | direct_video;
-wire flip = ~no_rotate;
+wire flip = no_rotate;
 wire video_rotated;
 screen_rotate screen_rotate(.*);
 
@@ -475,7 +475,7 @@ BluePrint BP_inst
 	.p1_controls(p1_controls),
 	.p2_controls(p2_controls),
 
-	.dip_sw({~dip_sw[1], ~dip_sw[0]}),
+	.dip_sw({dip_sw[1], dip_sw[0]}),
 
 	.h_center(status[6:3]),
 	.v_center(status[10:7]),
