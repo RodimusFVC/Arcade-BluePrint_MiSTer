@@ -451,8 +451,10 @@ always_ff @(posedge clk_49m) begin
 							tile_shift1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
 											tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
 						end else begin
-							tile_shift0 <= tile0_D;
-							tile_shift1 <= tile1_D;
+							tile_shift0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
+											tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
+							tile_shift1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
+											tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
 						end
 
 						tile_color_latch    <= pipe_color;
