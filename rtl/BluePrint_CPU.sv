@@ -331,9 +331,9 @@ reg       pipe_priority;
 reg [2:0] pipe_fine_y;
 
 wire [4:0] screen_col = h_cnt[7:3];
-wire [4:0] fetch_col = screen_col; // + 5'd1;
+wire [4:0] fetch_col = screen_col + 5'd1;
 wire [2:0] fine_x = h_cnt[2:0];
-wire [7:0] screen_y = v_cnt[7:0]; // - 8'd16;
+wire [7:0] screen_y = v_cnt[7:0];
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
 
 // cen_5m-stepped pipeline: fetches tile data for column (screen_col + 1) so it's
