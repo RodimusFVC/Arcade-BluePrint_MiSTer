@@ -323,6 +323,7 @@ reg [7:0] tile_shift0, tile_shift1;
 reg [6:0] tile_color_latch;
 reg       tile_priority_latch;
 reg       prev_bank_bit;
+reg [4:0] latched_col;
 
 // Pipeline temporaries
 reg [7:0] pipe_tile0, pipe_tile1;
@@ -330,10 +331,10 @@ reg [6:0] pipe_color;
 reg       pipe_priority;
 reg [2:0] pipe_fine_y;
 
-wire [4:0] screen_col = h_cnt[7:3];
-wire [4:0] fetch_col = screen_col + 5'd1;
+wire [4:0] screen_col = h_cnt[7:3];														// Corrected Height - DO NOT TOUCH! :)
+wire [4:0] fetch_col = screen_col; // + 5'd2;
 wire [2:0] fine_x = h_cnt[2:0];
-wire [7:0] screen_y = v_cnt[7:0];
+wire [7:0] screen_y = v_cnt[7:0];														// Corrected Width - DO NOT TOUCH! :)
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
 
 // cen_5m-stepped pipeline: fetches tile data for column (screen_col + 1) so it's
@@ -390,11 +391,11 @@ always_ff @(posedge clk_49m) begin
 						scrolled_y_full = screen_y + scroll_render_D;
 
 						if (flip) begin
-							vram_render_addr <= {(5'd31 - fetch_col), scrolled_y_full[7:3]};
-							cram_render_addr <= {(5'd31 - fetch_col), scrolled_y_full[7:3]};
+							vram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};
+							cram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};
 						end else begin
-							vram_render_addr <= {fetch_col, scrolled_y_full[7:3]};
-							cram_render_addr <= {fetch_col, scrolled_y_full[7:3]};
+							vram_render_addr <= {latched_col, scrolled_y_full[7:3]};
+							cram_render_addr <= {latched_col, scrolled_y_full[7:3]};
 						end
 					end
 
@@ -458,6 +459,7 @@ always_ff @(posedge clk_49m) begin
 				// 7: start fetch for next tile (prefetch)
 				// --------------------------------------------------
 				3'd7: begin
+					latched_col <= fetch_col;
 					if (flip)
 						scroll_render_addr <= (8'd31 - {3'd0, fetch_col});
 					else
