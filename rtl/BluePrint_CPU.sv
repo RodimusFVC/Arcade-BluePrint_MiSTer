@@ -312,9 +312,9 @@ wire [7:0] z80_Din = cs_rom                                ? rom_D :
                      (cs_cram & n_wr)                       ? cram_cpu_D :
                      (cs_scroll & n_wr)                     ? scroll_cpu_D :
                      (cs_sprite & n_wr)                     ? sprite_cpu_D :
-                     (cs_io_c & ~n_rd & z80_A[1:0] == 2'b00) ? p1_controls :
-                     (cs_io_c & ~n_rd & z80_A[1:0] == 2'b01) ? p2_controls :
-                     (cs_io_c & ~n_rd & z80_A[1:0] == 2'b11) ? dipsw_readback :
+                     (cs_io_c & ~n_rd & (z80_A[1:0] == 2'b00)) ? p1_controls :
+                     (cs_io_c & ~n_rd & (z80_A[1:0] == 2'b01)) ? p2_controls :
+                     (cs_io_c & ~n_rd & (z80_A[1:0] == 2'b11)) ? dipsw_readback :
                      8'hFF;
 
 //--------------------------------------------------- Tilemap rendering pipeline ------------------------------------------------//
@@ -331,7 +331,7 @@ reg       pipe_priority;
 reg [2:0] pipe_fine_y;
 
 wire [4:0] screen_col = h_cnt[7:3];
-wire [4:0] fetch_col = screen_col;
+wire [4:0] fetch_col = screen_col + 5'd1;
 wire [2:0] fine_x = h_cnt[2:0];
 wire [7:0] screen_y = v_cnt[7:0] - 8'd16;
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
@@ -372,7 +372,7 @@ always_ff @(posedge clk_49m) begin
 				// --------------------------------------------------
 				// 0: start fetch for next tile (prefetch)
 				// --------------------------------------------------
-				3'd7: begin
+				3'd0: begin
 					if (flip)
 						scroll_render_addr <= (8'd31 - {3'd7, fetch_col});
 					else
@@ -382,7 +382,6 @@ always_ff @(posedge clk_49m) begin
 					tile_shift0 <= {1'b0, tile_shift0[7:1]};
 					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
-
 
 				// --------------------------------------------------
 				// 1: scroll data ready → compute row
@@ -445,7 +444,8 @@ always_ff @(posedge clk_49m) begin
 				// 4: tile ROM data ready → LATCH IMMEDIATELY
 				// --------------------------------------------------
 				3'd4: begin
-					if (h_cnt < 9'd256) begin
+//					if (h_cnt < 9'd256) begin
+					if (1) begin
 						if (flip) begin
 							tile_shift0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
 											tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
