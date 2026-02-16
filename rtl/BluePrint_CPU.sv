@@ -372,11 +372,11 @@ always_ff @(posedge clk_49m) begin
 				// --------------------------------------------------
 				// 0: start fetch for next tile (prefetch)
 				// --------------------------------------------------
-				3'd0: begin
+				3'd7: begin
 					if (flip)
-						scroll_render_addr <= (8'd31 - {3'd7, fetch_col});
+						scroll_render_addr <= (8'd31 - {3'd0, fetch_col});
 					else
-						scroll_render_addr <= {3'd7, fetch_col};
+						scroll_render_addr <= {3'd0, fetch_col};
 
 					// shift current pixel
 					tile_shift0 <= {1'b0, tile_shift0[7:1]};

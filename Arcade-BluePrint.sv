@@ -224,6 +224,7 @@ localparam CONF_STR = {
 	"A.BLUEPRT;;",
 	"ODE,Aspect Ratio,Original,Full screen,[ARC1],[ARC2];",
 	"OC,Orientation,Vert,Horz;",
+    "OB,Flip Vertical,Off,On;",
 	"OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"-;",
 	"H1OR,Autosave Hiscores,Off,On;",
@@ -440,7 +441,7 @@ wire ce_pix;
 
 wire rotate_ccw = 1;
 wire no_rotate = status[12] | direct_video;
-wire flip = no_rotate;   // May need to remove ~
+wire flip = ~no_rotate ^ status[11];
 wire video_rotated;
 screen_rotate screen_rotate(.*);
 
