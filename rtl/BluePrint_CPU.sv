@@ -331,9 +331,9 @@ reg       pipe_priority;
 reg [2:0] pipe_fine_y;
 
 wire [4:0] screen_col = h_cnt[7:3];
-wire [4:0] fetch_col = screen_col + 5'd1;
+wire [4:0] fetch_col = screen_col; // + 5'd1;
 wire [2:0] fine_x = h_cnt[2:0];
-wire [7:0] screen_y = v_cnt[7:0] - 8'd16;
+wire [7:0] screen_y = v_cnt[7:0]; // - 8'd16;
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
 
 // cen_5m-stepped pipeline: fetches tile data for column (screen_col + 1) so it's
@@ -370,17 +370,13 @@ always_ff @(posedge clk_49m) begin
 			case (fine_x)
 
 				// --------------------------------------------------
-				// 0: start fetch for next tile (prefetch)
+				// 0: transfer pipe to shift
 				// --------------------------------------------------
-				3'd7: begin
-					if (flip)
-						scroll_render_addr <= (8'd31 - {3'd0, fetch_col});
-					else
-						scroll_render_addr <= {3'd0, fetch_col};
-
-					// shift current pixel
-					tile_shift0 <= {1'b0, tile_shift0[7:1]};
-					tile_shift1 <= {1'b0, tile_shift1[7:1]};
+				3'd0: begin
+					tile_shift0 <= pipe_tile0;
+					tile_shift1 <= pipe_tile1;
+					tile_color_latch    <= pipe_color;
+					tile_priority_latch <= pipe_priority;
 				end
 
 				// --------------------------------------------------
@@ -444,33 +440,36 @@ always_ff @(posedge clk_49m) begin
 				// 4: tile ROM data ready → LATCH IMMEDIATELY
 				// --------------------------------------------------
 				3'd4: begin
-//					if (h_cnt < 9'd256) begin
-					if (1) begin
-						if (flip) begin
-							tile_shift0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
-											tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
-							tile_shift1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
-											tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
-						end else begin
-							tile_shift0 <= tile0_D;
-							tile_shift1 <= tile1_D;
-//							tile_shift0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
-//											tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
-//							tile_shift1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
-//											tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
-						end
-
-						tile_color_latch    <= pipe_color;
-						tile_priority_latch <= pipe_priority;
+					if (flip) begin
+						pipe_tile0 <= {tile0_D[0],tile0_D[1],tile0_D[2],tile0_D[3],
+									tile0_D[4],tile0_D[5],tile0_D[6],tile0_D[7]};
+						pipe_tile1 <= {tile1_D[0],tile1_D[1],tile1_D[2],tile1_D[3],
+									tile1_D[4],tile1_D[5],tile1_D[6],tile1_D[7]};
 					end else begin
-						tile_shift0 <= 8'd0;
-						tile_shift1 <= 8'd0;
+						pipe_tile0 <= tile0_D;
+						pipe_tile1 <= tile1_D;
 					end
+
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
 				end
 
+				// --------------------------------------------------
+				// 7: start fetch for next tile (prefetch)
+				// --------------------------------------------------
+				3'd7: begin
+					if (flip)
+						scroll_render_addr <= (8'd31 - {3'd0, fetch_col});
+					else
+						scroll_render_addr <= {3'd0, fetch_col};
+
+					// shift current pixel
+					tile_shift0 <= {1'b0, tile_shift0[7:1]};
+					tile_shift1 <= {1'b0, tile_shift1[7:1]};
+				end
 
 				// --------------------------------------------------
-				// 5,6,7: shift pixels
+				// 5,6 : shift pixels
 				// --------------------------------------------------
 				default: begin
 					tile_shift0 <= {1'b0, tile_shift0[7:1]};
