@@ -391,16 +391,22 @@ always_ff @(posedge clk_49m) begin
 						scrolled_y_full = screen_y + scroll_render_D;
 
 						if (flip) begin
-							vram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};
-							cram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};
+							vram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};		// Likely Wrong
+							cram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};		// Likely Wrong
 						end else begin
-							vram_render_addr <= {latched_col, scrolled_y_full[7:3]};
-							cram_render_addr <= {latched_col, scrolled_y_full[7:3]};
+							vram_render_addr <= {latched_col, scrolled_y_full[7:3]};    // Upside Down
+							cram_render_addr <= {latched_col, scrolled_y_full[7:3]};    // Upside Down
+//							vram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};    // Upside Down
+//							cram_render_addr <= {(5'd31 - latched_col), scrolled_y_full[7:3]};    // Upside Down
+
 						end
 					end
 
 					tile_shift0 <= {1'b0, tile_shift0[7:1]};
 					tile_shift1 <= {1'b0, tile_shift1[7:1]};
+//					tile_shift0 <= {tile_shift0[7:1], 1'b0};
+//					tile_shift1 <= {tile_shift1[7:1], 1'b0};
+
 				end
 
 
@@ -428,7 +434,8 @@ always_ff @(posedge clk_49m) begin
 					else
 						tile_render_addr <= {prev_bank_bit & gfx_bank,
 											vram_render_D,
-											pipe_fine_y};
+//											pipe_fine_y};
+											3'd7 - pipe_fine_y};
 
 					prev_bank_bit <= cram_render_D[6];
 

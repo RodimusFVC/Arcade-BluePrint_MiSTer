@@ -239,8 +239,8 @@ localparam CONF_STR = {
 	"P2O7A,V Center,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12;",
 	"-;",
 	"R0,Reset;",
-	"J1,Fire,Start P1,Coin,Start P2,Pause;",
-	"jn,B,Start,R,Select,L;",
+	"J1,Fire,Start P1,Start P2,Coin,Pause;",
+	"jn,A,Start,R,Select,L;",
 	"V,v",`BUILD_DATE
 };
 
@@ -380,21 +380,21 @@ wire m_up1      = btn_up      | joystick_0[3];
 wire m_down1    = btn_down    | joystick_0[2];
 wire m_left1    = btn_left    | joystick_0[1];
 wire m_right1   = btn_right   | joystick_0[0];
-wire m_fire1    = btn_fire    | joystick_0[5];
+wire m_fire1    = btn_fire    | joystick_0[4];
 
 //Player 2
 wire m_up2      = btn_up      | joystick_1[3];
 wire m_down2    = btn_down    | joystick_1[2];
 wire m_left2    = btn_left    | joystick_1[1];
 wire m_right2   = btn_right   | joystick_1[0];
-wire m_fire2    = btn_fire    | joystick_1[5];
+wire m_fire2    = btn_fire    | joystick_1[4];
 
 //Start/coin
-wire m_start1   = btn_1p_start | joystick_0[8];
-wire m_start2   = btn_2p_start | joystick_0[9];
+wire m_start1   = btn_1p_start | joystick_0[5];
+wire m_start2   = btn_2p_start | joystick_0[6];
 wire m_coin1    = btn_coin1    | joystick_0[7];
 wire m_coin2    = btn_coin2;
-wire m_pause    = btn_pause    | joystick_0[10];
+wire m_pause    = btn_pause    | joystick_0[8];
 
 // PAUSE SYSTEM
 wire pause_cpu;
@@ -463,8 +463,10 @@ arcade_video #(256, 24) arcade_video
 // Assemble player control bytes for Blue Print (active HIGH)
 // IN0: {coin1, start2, start1, btn1, left, down, right, up}
 // IN1: {3'b111, btn1, left, down, right, up}
-wire [7:0] p1_controls = {m_coin1, m_start2, m_start1, m_fire1, m_left1, m_down1, m_right1, m_up1};
-wire [7:0] p2_controls = {3'b111, m_fire2, m_left2, m_down2, m_right2, m_up2};
+//wire [7:0] p1_controls = {m_coin1, m_start2, m_start1, m_fire1, m_left1, m_down1, m_right1, m_up1};
+//wire [7:0] p2_controls = {3'b111, m_fire2, m_left2, m_down2, m_right2, m_up2};
+wire [7:0] p1_controls = {m_down1, m_up1, m_right1, m_left1, m_fire1, 1'b0, m_start1, m_coin1};
+wire [7:0] p2_controls = {m_down2, m_up2, m_right2, m_left2, m_fire2, 1'b0, m_start2, m_coin2};
 
 // Instantiate Blue Print top-level module
 BluePrint BP_inst
