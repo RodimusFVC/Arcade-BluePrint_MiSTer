@@ -118,7 +118,7 @@ assign video_hblank = hblk;
 assign video_vblank = vblk;
 
 // Sync generation with screen centering offsets
-wire [8:0] hs_start = 9'd280 + {5'd0, h_center};
+wire [8:0] hs_start = 9'd280 + {5'd0, h_center};  // Was 9'd280 + {5'd0, h_center};
 wire [8:0] hs_end   = hs_start + 9'd32;
 wire [8:0] vs_start = 9'd248 + {5'd0, v_center};
 wire [8:0] vs_end   = vs_start + 9'd4;
@@ -340,7 +340,8 @@ reg [6:0] pipe_color;                // Pre-fetched color byte
 reg       pipe_priority;             // Pre-fetched priority bit
 reg [2:0] pipe_fine_y;              // Fine Y for ROM address
 
-wire [4:0] screen_col  = h_cnt[7:3];
+wire [8:0] adjusted_h_cnt = (h_cnt <= (9'd248 - 9'd0)) ? h_cnt + 9'd0 : (9'd248 - 9'd0);  // Test Adjusting This...
+wire [4:0] screen_col  = adjusted_h_cnt[7:3];  // Changed From - h_cnt[7:3];
 wire [2:0] fine_x      = h_cnt[2:0];
 wire [7:0] screen_y    = v_cnt[7:0];
 wire visible_line = (v_cnt >= 9'd16) && (v_cnt < 9'd240);
@@ -386,8 +387,8 @@ always_ff @(posedge clk_49m) begin
 						scrolled_y       = screen_y + scroll_render_D;
 						pipe_fine_y      <= scrolled_y[2:0];
 						// TILEMAP_SCAN_COLS_FLIP_X: VRAM col 0 = rightmost screen col (31)
-						vram_render_addr <= {(5'd31 - latched_col), scrolled_y[7:3]};
-						cram_render_addr <= {(5'd31 - latched_col), scrolled_y[7:3]};
+						vram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};  // Test Change From 5'd31
+						cram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};  // Test Change From 5'd31
 					end
 					tile_shift0 <= {tile_shift0[6:0], 1'b0};
 					tile_shift1 <= {tile_shift1[6:0], 1'b0};

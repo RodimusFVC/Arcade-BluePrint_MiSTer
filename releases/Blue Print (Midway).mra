@@ -57,6 +57,16 @@
         <part crc="fd38777a" name="snd-1.3u"/>
         <part crc="33d5bf5b" name="snd-2.3v"/>
     </rom>
+	<rom index="2"></rom>
+	<rom index="3" md5="none">
+		<part>
+		01 FF FF FF 00 FF 00 02 00 02 00 01 00 FF 00 00
+		00 00 00 81 40 00 00 01
+		</part>
+	</rom>
+	<rom index="4"></rom>
+
+	<nvram index="4" size="40"></nvram>
 
     <remark></remark>
     <mratimestamp>20260213000000</mratimestamp>
