@@ -26,6 +26,7 @@
 module BluePrint_SND
 (
 	input                reset,
+	input				 pause,
 	input                clk_49m,         // Master clock: 49.152MHz
 
 	// Sound command interface from main CPU
@@ -83,7 +84,7 @@ T80s C8
 (
 	.RESET_n(reset),
 	.CLK(clk_49m),
-	.CEN(cen_1m25),
+	.CEN(cen_1m25 & ~pause),
 	.INT_n(n_irq),
 	.NMI_n(n_nmi),
 	.M1_n(n_m1),
@@ -238,7 +239,7 @@ jt49_bus #(.COMP(3'b100)) ay1_chip
 (
 	.rst_n(reset),
 	.clk(clk_49m),
-	.clk_en(cen_1m25),
+	.clk_en(cen_1m25 & ~pause),
 	.bdir(ay1_bdir),
 	.bc1(ay1_bc1),
 	.din(sound_Dout),
@@ -260,7 +261,7 @@ jt49_bus #(.COMP(3'b100)) ay2_chip
 (
 	.rst_n(reset),
 	.clk(clk_49m),
-	.clk_en(cen_0m625),
+	.clk_en(cen_0m625 & ~pause),
 	.bdir(ay2_bdir),
 	.bc1(ay2_bc1),
 	.din(sound_Dout),

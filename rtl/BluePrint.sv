@@ -152,6 +152,7 @@ BluePrint_CPU main_pcb
 BluePrint_SND sound_pcb
 (
 	.reset(reset),
+	.pause(pause),
 	.clk_49m(clk_49m),
 	.sound_cmd(sound_cmd),
 	.sound_cmd_wr(sound_cmd_wr),
